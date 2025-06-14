@@ -1,4 +1,4 @@
-## [![云盘签到](https://github.com/y377/189pan/actions/workflows/main.yml/badge.svg)](https://github.com/y377/189pan/actions/workflows/main.yml) 189pan 
+[![云盘签到](https://github.com/dext7r/189pan/actions/workflows/main.yml/badge.svg)](https://github.com/dext7r/189pan/actions/workflows/main.yml) [![GitHub Pages](https://github.com/y377/189pan/actions/workflows/jekyll-gh-pages.yml/badge.svg)](https://github.com/dext7r/189pan/actions/workflows/jekyll-gh-pages.yml) 
 
 ###### 本项目fork自[Cloud189_Action](https://github.com/qsf728999746/Cloud189_Action)（在此感谢）并修复和改进以下内容：
 
