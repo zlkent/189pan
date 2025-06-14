@@ -54,7 +54,16 @@ jobs:
           {
             echo "# 天翼云盘签到记录"
             echo ""
+            echo "[![签到状态](https://github.com/${{ github.repository }}/actions/workflows/main.yml/badge.svg)](https://github.com/${{ github.repository }}/actions/workflows/main.yml) [![项目主页](https://img.shields.io/badge/GitHub-项目主页-blue?logo=github)](https://github.com/${{ github.repository }})"
+            echo ""
             echo "**最后更新:** $(date '+%Y-%m-%d %H:%M:%S %Z')"
+            echo ""
+            echo "## 快速导航"
+            echo ""
+            echo "- 🔄 [查看Action运行记录](https://github.com/${{ github.repository }}/actions)"
+            echo "- 📋 [查看最新运行](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo "- 🏠 [返回项目主页](https://github.com/${{ github.repository }})"
+            echo "- ⚙️ [手动触发签到](https://github.com/${{ github.repository }}/actions/workflows/main.yml)"
             echo ""
             echo "## 签到详情"
             echo ""
@@ -71,11 +80,15 @@ jobs:
           TYYP_USERNAME: ${{ secrets.TYYP_USERNAME }}
           TYYP_PSW: ${{ secrets.TYYP_PSW }}
 
+      - name: Set commit message
+        id: commit_msg
+        run: echo "message=🤖 自动签到更新 $(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+
       - name: Commit changes
         if: always()
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🤖 自动签到更新 $(date '+%Y-%m-%d %H:%M:%S')"
+          commit_message: ${{ steps.commit_msg.outputs.message }}
           file_pattern: 'index.md'
           commit_options: '--no-verify'
           skip_dirty_check: true
