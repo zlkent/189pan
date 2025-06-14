@@ -1,48 +1,213 @@
-name: 云盘签到
+# 天翼云盘自动签到与页面部署 - 统一版
+name: 天翼云盘签到
 
 on:
   push:
-    branches: [master]
+    branches: [main, master]
   pull_request:
-    branches: [master]
+    branches: [main, master]
   schedule:
-    - cron: '30 1,13 * * *'
+    - cron: '30 1,13 * * *'  # 签到时间：每天 09:30 和 21:30 (UTC+8)
+    - cron: '35 5,17 * * *'  # 页面更新时间
   workflow_dispatch:
-  watch:
-    types: started
-permissions: write-all
+    inputs:
+      task_type:
+        description: '选择执行任务'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - 'checkin'
+          - 'pages'
+          - 'both'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build:
+  # 签到任务
+  checkin:
+    if: |
+      github.event_name == 'schedule' && github.event.schedule == '30 1,13 * * *' ||
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'watch' ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.task_type == 'checkin' || github.event.inputs.task_type == 'both'))
     runs-on: ubuntu-latest
     env:
-       TZ: Asia/Shanghai
+      TZ: Asia/Shanghai
+      PYTHONUNBUFFERED: 1
+    outputs:
+      checkin_success: ${{ steps.checkin.outputs.success }}
+      pages_updated: ${{ steps.checkin.outputs.pages_updated }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: 打印ip地址
-        run: echo "My IP address is $(curl -s ifconfig.me)"
-      - name: Set up Python 3.8
-        uses: actions/setup-python@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          python-version: 3.8
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
           cache: 'pip'
-      - name: 缓存Python依赖
-        uses: actions/cache@v3
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      - name: 安装环境
-        run: pip install -r requirements.txt
-      - name: 签到
+
+      - name: Install dependencies
         run: |
-          (echo "签到时间 $(date "+%F %T") [![签到状态](https://github.com/${{ github.repository }}/actions/workflows/main.yml/badge.svg?branch=${{ github.ref_name }})](https://github.com/${{ github.repository }}/actions/workflows/main.yml)" && python3 ./main.py) | tee >(sed 's/^/- /' > index.md)
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Display IP address
+        run: |
+          echo "当前IP地址: $(curl -s https://ipinfo.io/ip)"
+
+      - name: Run checkin script
+        id: checkin
+        run: |
+          echo "开始执行签到任务..."
+          echo "执行时间: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+          
+          # 执行签到并生成页面内容
+          {
+            echo "# 天翼云盘签到记录"
+            echo ""
+            echo "**最后更新:** $(date '+%Y-%m-%d %H:%M:%S %Z')"
+            echo ""
+            echo "**签到状态:** [![签到状态](https://github.com/${{ github.repository }}/actions/workflows/main.yml/badge.svg)](https://github.com/${{ github.repository }}/actions)"
+            echo ""
+            echo "## 📊 签到详情"
+            echo ""
+            python3 ./main.py 2>&1 | sed 's/^/- /'
+            echo ""
+            echo "---"
+            echo "*由 GitHub Actions 自动更新 • [查看详细日志](https://github.com/${{ github.repository }}/actions)*"
+          } | tee index.md
+          
+          if [ $? -eq 0 ]; then
+            echo "success=true" >> $GITHUB_OUTPUT
+            echo "pages_updated=true" >> $GITHUB_OUTPUT
+          else
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "pages_updated=false" >> $GITHUB_OUTPUT
+          fi
         env:
           TYYP_USERNAME: ${{ secrets.TYYP_USERNAME }}
           TYYP_PSW: ${{ secrets.TYYP_PSW }}
-      - name: Git Auto Commit
-        uses: stefanzweifel/git-auto-commit-action@v4.16.0
+
+      - name: Update log file
+        if: always()
+        run: |
+          {
+            echo "## $(date '+%Y-%m-%d %H:%M:%S') - 签到记录"
+            echo ""
+            if [ "${{ steps.checkin.outputs.success }}" == "true" ]; then
+              echo "✅ **状态:** 签到成功"
+            else
+              echo "❌ **状态:** 签到失败"
+            fi
+            echo ""
+            echo "**详情:**"
+            cat index.md | tail -n +7 | head -n -3
+            echo ""
+            echo "---"
+            echo ""
+            if [ -f log.md ]; then
+              tail -n +1 log.md
+            fi
+          } > log.md.tmp && mv log.md.tmp log.md
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "自动签到更新 [skip ci]"
+          commit_message: "🤖 自动签到更新 - $(date '+%Y-%m-%d %H:%M:%S')"
           file_pattern: 'index.md log.md'
+          commit_user_name: 'github-actions[bot]'
+          commit_user_email: 'github-actions[bot]@users.noreply.github.com'
+
+  # GitHub Pages 部署
+  deploy-pages:
+    if: |
+      always() &&
+      (needs.checkin.outputs.pages_updated == 'true' ||
+       github.event_name == 'schedule' && github.event.schedule == '35 5,17 * * *' ||
+       (github.event_name == 'workflow_dispatch' && (github.event.inputs.task_type == 'pages' || github.event.inputs.task_type == 'both')))
+    needs: [checkin]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # 任务摘要
+  summary:
+    if: always()
+    needs: [checkin, deploy-pages]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create workflow summary
+        run: |
+          echo "## 🚀 执行摘要" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**执行时间:** $(date '+%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
+          echo "**触发方式:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 📋 任务状态" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.checkin.result }}" == "success" ]; then
+            echo "- ✅ **签到任务:** 成功" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.checkin.result }}" == "failure" ]; then
+            echo "- ❌ **签到任务:** 失败" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.checkin.result }}" == "skipped" ]; then
+            echo "- ⏭️ **签到任务:** 跳过" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⏸️ **签到任务:** 取消" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.deploy-pages.result }}" == "success" ]; then
+            echo "- ✅ **页面部署:** 成功" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.deploy-pages.result }}" == "failure" ]; then
+            echo "- ❌ **页面部署:** 失败" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.deploy-pages.result }}" == "skipped" ]; then
+            echo "- ⏭️ **页面部署:** 跳过" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⏸️ **页面部署:** 取消" >> $GITHUB_STEP_SUMMARY
+          fi 
