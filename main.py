@@ -6,6 +6,7 @@ import hashlib
 import rsa
 import requests
 import os
+import sys
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from dotenv import load_dotenv
@@ -270,14 +271,14 @@ def load_accounts() -> List[Tuple[str, str]]:
     if not username_env or not password_env:
         print("错误：环境变量TYYP_USERNAME或TYYP_PSW未设置")
         print("请确保.env文件存在并包含正确的配置")
-        exit(1)
+        sys.exit(1)
 
     usernames = username_env.split('&')
     passwords = password_env.split('&')
 
     if len(usernames) != len(passwords):
         print("错误：用户名和密码数量不匹配")
-        exit(1)
+        sys.exit(1)
 
     return list(zip(usernames, passwords))
 

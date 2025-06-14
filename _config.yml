@@ -1,0 +1,29 @@
+title: 天翼云盘签到记录
+description: 自动签到记录和统计
+theme: minima
+
+# 插件
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+
+# 排除文件
+exclude:
+  - README.md
+  - main.py
+  - requirements.txt
+  - .env
+  - .git/
+  - .github/
+
+# 页面设置
+show_excerpts: false
+header_pages:
+  - index.md
+
+# Markdown 设置
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge 
